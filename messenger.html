@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Чат</title>
+<style>
+:root{--bg:#eef2f6;--card:#fff;--ink:#14212b;--mute:#6b7c8a;--acc:#2b59ff;--other:#e0e7ee;--line:#d9e1e8}
+@media(prefers-color-scheme:dark){:root{--bg:#0e151c;--card:#16202a;--ink:#e8eef3;--mute:#8a9aa8;--acc:#5b82ff;--other:#223140;--line:#26343f}}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font:16px/1.4 Manrope,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);padding-top:env(safe-area-inset-top)}
+.view{height:100%;display:flex;flex-direction:column}
+.hide{display:none!important}
+header{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{font-size:18px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button{font:inherit;border:0;border-radius:12px;padding:10px 14px;background:var(--acc);color:#fff;font-weight:600}
+button.ghost{background:transparent;color:var(--acc);padding:8px}
+button.alt{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+input{font:inherit;width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.list{flex:1;overflow-y:auto}
+.row{display:flex;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--card)}
+.row.on{background:var(--other)}
+.av{width:42px;height:42px;border-radius:50%;background:var(--acc);color:#fff;display:grid;place-items:center;font-weight:700;flex:none}
+.row b{display:block}.row small{color:var(--mute);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw}
+.bot{font-size:11px;background:var(--other);padding:1px 6px;border-radius:6px;margin-left:6px;font-weight:600}
+.empty{padding:40px 24px;text-align:center;color:var(--mute)}
+#auth{justify-content:center;padding:28px;gap:12px}
+#auth h1{font-size:30px;margin-bottom:4px}
+#auth p{color:var(--mute);margin-bottom:12px}
+#msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:6px}
+.m{max-width:80%;padding:8px 12px;border-radius:16px;background:var(--other);align-self:flex-start;word-break:break-word}
+.m.me{background:var(--acc);color:#fff;align-self:flex-end}
+.m small{display:block;font-size:12px;opacity:.7}
+form{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--line)}
+.bar{padding:10px 12px;display:flex;gap:8px}
+#err{color:#d33;font-size:14px;min-height:20px}
+</style>
+</head>
+<body>
+
+<section id="auth" class="view hide">
+  <h1>Вход в чат</h1>
+  <p>Выберите, как войти.</p>
+  <button id="bG">Войти через Google</button>
+  <button id="bM" class="alt">Войти через Microsoft</button>
+  <div id="phoneBox" style="display:grid;gap:8px">
+    <input id="ph" type="tel" placeholder="+7 900 000 00 00" autocomplete="tel">
+    <button id="bP" class="alt">Получить код по SMS</button>
+    <div id="codeBox" class="hide" style="display:grid;gap:8px">
+      <input id="code" inputmode="numeric" placeholder="Код из SMS">
+      <button id="bC">Подтвердить код</button>
+    </div>
+  </div>
+  <div id="rc"></div>
+  <div id="err"></div>
+</section>
+
+<section id="list" class="view hide">
+  <header><h1>Чаты</h1><button class="ghost" id="bFind">Найти людей</button><button class="ghost" id="bOut">Выйти</button></header>
+  <div class="list" id="chats"></div>
+</section>
+
+<section id="search" class="view hide">
+  <header><button class="ghost" id="sBack">Назад</button><h1>Поиск людей</h1><button class="ghost" id="bGroup">Группа</button></header>
+  <div class="bar"><input id="q" placeholder="Начните вводить имя"></div>
+  <div class="list" id="found"></div>
+  <div class="bar hide" id="mk"><button id="bMk" style="flex:1">Создать группу</button></div>
+</section>
+
+<section id="chat" class="view hide">
+  <header><button class="ghost" id="cBack">Назад</button><h1 id="cTitle"></h1></header>
+  <div id="msgs"></div>
+  <form id="f"><input id="t" placeholder="Сообщение" autocomplete="off"><button>Отправить</button></form>
+</section>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// 1) Вставьте сюда настройки веб-приложения из Firebase (Project settings → Your apps)
+const firebaseConfig = {
+  apiKey: "AIzaSyB8abx-xLG-SUevMlLXVq8ITjHZLkfmacY",
+  authDomain: "masenger-656fe.firebaseapp.com",
+  projectId: "masenger-656fe",
+  storageBucket: "masenger-656fe.firebasestorage.app",
+  messagingSenderId: "312081552783",
+  appId: "1:312081552783:web:6cfda43e4e631d0bdd67fa",
+  measurementId: "G-ZFD5PQB3QB"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth(), db = firebase.firestore();
+auth.useDeviceLanguage();
+const $ = s => document.querySelector(s);
+const ts = () => firebase.firestore.FieldValue.serverTimestamp();
+let me = null, chats = [], cur = null, offList = null, offMsgs = null, group = false, picked = {}, conf = null, timer = null;
+
+const show = v => ['auth','list','search','chat'].forEach(x => $('#'+x).classList.toggle('hide', x !== v));
+const err = e => { $('#err').textContent = 'Ошибка: ' + (e.message || e); };
+const ini = n => (n || '?').trim()[0].toUpperCase();
+function row(name, sub, isBot, on) {
+  const r = document.createElement('div'); r.className = 'row' + (on ? ' on' : '');
+  r.innerHTML = '<div class="av"></div><div><b></b><small></small></div>';
+  r.querySelector('.av').textContent = ini(name);
+  r.querySelector('b').textContent = name;
+  if (isBot) { const s = document.createElement('span'); s.className = 'bot'; s.textContent = 'бот'; r.querySelector('b').append(s); }
+  r.querySelector('small').textContent = sub || '';
+  return r;
+}
+
+// ---------- Вход ----------
+$('#bG').onclick = () => signIn(new firebase.auth.GoogleAuthProvider());
+$('#bM').onclick = () => signIn(new firebase.auth.OAuthProvider('microsoft.com'));
+async function signIn(p) {
+  try { await auth.signInWithPopup(p); }
+  catch (e) { if (e.code === 'auth/popup-blocked') auth.signInWithRedirect(p); else err(e); }
+}
+$('#bP').onclick = async () => {
+  try {
+    window.rv = window.rv || new firebase.auth.RecaptchaVerifier('rc', { size: 'invisible' });
+    conf = await auth.signInWithPhoneNumber($('#ph').value.trim(), window.rv);
+    $('#codeBox').classList.remove('hide'); $('#err').textContent = '';
+  } catch (e) { err(e); }
+};
+$('#bC').onclick = async () => { try { await conf.confirm($('#code').value.trim()); } catch (e) { err(e); } };
+$('#bOut').onclick = () => auth.signOut();
+
+auth.onAuthStateChanged(async u => {
+  if (offList) offList(); if (offMsgs) offMsgs();
+  if (!u) { me = null; show('auth'); return; }
+  const ref = db.collection('users').doc(u.uid);
+  const snap = await ref.get().catch(() => null);
+  let name = u.displayName || u.phoneNumber || 'Без имени';
+  if (snap && snap.exists) name = snap.data().name;
+  else await ref.set({ uid: u.uid, name, nameLower: name.toLowerCase(), isBot: false, createdAt: ts() }).catch(err);
+  me = { uid: u.uid, name };
+  show('list');
+  offList = db.collection('chats').where('members', 'array-contains', me.uid).onSnapshot(s => {
+    chats = s.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => ((b.updatedAt && b.updatedAt.seconds) || 0) - ((a.updatedAt && a.updatedAt.seconds) || 0));
+    renderChats();
+  }, err);
+});
+
+// ---------- Список чатов ----------
+const title = c => c.isGroup ? c.title : ((Object.entries(c.names || {}).find(([k]) => k !== me.uid) || [0, 'Чат'])[1]);
+function renderChats() {
+  const box = $('#chats'); box.innerHTML = '';
+  if (!chats.length) { box.innerHTML = '<div class="empty">Чатов пока нет. Нажмите «Найти людей» и напишите первому.</div>'; return; }
+  chats.forEach(c => { const r = row(title(c), c.last, c.isBot); r.onclick = () => openChat(c); box.append(r); });
+}
+
+// ---------- Поиск и создание чатов ----------
+$('#bFind').onclick = () => { group = false; picked = {}; syncSearch(); show('search'); $('#q').focus(); };
+$('#sBack').onclick = () => show('list');
+$('#bGroup').onclick = () => { group = !group; picked = {}; syncSearch(); runSearch(); };
+function syncSearch() { $('#bGroup').textContent = group ? 'Отмена' : 'Группа'; $('#mk').classList.toggle('hide', !group); $('#found').innerHTML = ''; }
+$('#q').oninput = () => { clearTimeout(timer); timer = setTimeout(runSearch, 300); };
+async function runSearch() {
+  const q = $('#q').value.trim().toLowerCase(), box = $('#found');
+  if (!q) { box.innerHTML = '<div class="empty">Введите имя, чтобы найти человека или бота.</div>'; return; }
+  try {
+    const s = await db.collection('users').where('nameLower', '>=', q).where('nameLower', '<=', q + '\uf8ff').limit(20).get();
+    box.innerHTML = '';
+    const users = s.docs.map(d => d.data()).filter(u => u.uid !== me.uid);
+    if (!users.length) box.innerHTML = '<div class="empty">Никого не нашли. Проверьте имя.</div>';
+    users.forEach(u => {
+      const r = row(u.name, u.isBot ? 'Бот' : '', u.isBot, picked[u.uid]);
+      r.onclick = () => {
+        if (!group) return startDirect(u);
+        picked[u.uid] ? delete picked[u.uid] : picked[u.uid] = u; r.classList.toggle('on');
+      };
+      box.append(r);
+    });
+  } catch (e) { box.innerHTML = '<div class="empty"></div>'; box.firstChild.textContent = 'Ошибка поиска: ' + e.message; }
+}
+async function startDirect(u) {
+  const id = [me.uid, u.uid].sort().join('_');
+  const c = { members: [me.uid, u.uid], names: { [me.uid]: me.name, [u.uid]: u.name }, isGroup: false, isBot: !!u.isBot };
+  await db.collection('chats').doc(id).set(c, { merge: true }).catch(err);
+  openChat({ id, ...c });
+}
+$('#bMk').onclick = async () => {
+  const list = Object.values(picked); if (!list.length) return alert('Выберите хотя бы одного человека');
+  const t = prompt('Название группы'); if (!t) return;
+  const names = { [me.uid]: me.name }; list.forEach(u => names[u.uid] = u.name);
+  const c = { members: Object.keys(names), names, isGroup: true, title: t, last: '', updatedAt: ts() };
+  const d = await db.collection('chats').add(c).catch(err);
+  if (d) openChat({ id: d.id, ...c });
+};
+
+// ---------- Переписка ----------
+function openChat(c) {
+  cur = c; $('#cTitle').textContent = title(c); show('chat');
+  if (offMsgs) offMsgs();
+  offMsgs = db.collection('chats').doc(c.id).collection('messages').orderBy('createdAt').limit(200).onSnapshot(s => {
+    const box = $('#msgs'); box.innerHTML = '';
+    s.docs.forEach(d => {
+      const m = d.data(), el = document.createElement('div');
+      el.className = 'm' + (m.from === me.uid ? ' me' : '');
+      if (c.isGroup && m.from !== me.uid) { const n = document.createElement('small'); n.textContent = m.name; el.append(n); }
+      el.append(document.createTextNode(m.text)); box.append(el);
+    });
+    box.scrollTop = box.scrollHeight;
+  }, err);
+}
+$('#cBack').onclick = () => { if (offMsgs) offMsgs(); show('list'); };
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('#t').value.trim(); if (!text) return; $('#t').value = '';
+  const ref = db.collection('chats').doc(cur.id);
+  await ref.collection('messages').add({ from: me.uid, name: me.name, text, createdAt: ts() }).catch(err);
+  await ref.update({ last: text, updatedAt: ts() }).catch(err);
+};
+</script>
+</body>
+</html>
