@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Чат</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2b59ff">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#eef2f6;--card:#fff;--ink:#14212b;--mute:#6b7c8a;--acc:#2b59ff;--other:#e0e7ee;--line:#d9e1e8}
+@media(prefers-color-scheme:dark){:root{--bg:#0e151c;--card:#16202a;--ink:#e8eef3;--mute:#8a9aa8;--acc:#5b82ff;--other:#223140;--line:#26343f}}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font:16px/1.4 Manrope,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);padding-top:env(safe-area-inset-top)}
+.view{height:100%;display:flex;flex-direction:column}
+.hide{display:none!important}
+header{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{font-size:18px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button{font:inherit;border:0;border-radius:12px;padding:10px 14px;background:var(--acc);color:#fff;font-weight:600}
+button.ghost{background:transparent;color:var(--acc);padding:8px}
+button.alt{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+input{font:inherit;width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.list{flex:1;overflow-y:auto}
+.row{display:flex;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--card)}
+.row.on{background:var(--other)}
+.av{width:42px;height:42px;border-radius:50%;background:var(--acc);color:#fff;display:grid;place-items:center;font-weight:700;flex:none;background-size:cover;background-position:center}
+.row b{display:block}.row small{color:var(--mute);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw}
+.bot{font-size:11px;background:var(--other);padding:1px 6px;border-radius:6px;margin-left:6px;font-weight:600}
+.empty{padding:40px 24px;text-align:center;color:var(--mute)}
+#auth{justify-content:center;padding:28px;gap:12px}
+#auth h1{font-size:30px;margin-bottom:4px}
+#auth p{color:var(--mute);margin-bottom:12px}
+#msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:6px}
+.m{max-width:80%;padding:8px 12px;border-radius:16px;background:var(--other);align-self:flex-start;word-break:break-word}
+.m.me{background:var(--acc);color:#fff;align-self:flex-end}
+.m small{display:block;font-size:12px;opacity:.7}
+form{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--line)}
+.bar{padding:10px 12px;display:flex;gap:8px}
+.m img,.m video{max-width:100%;border-radius:10px;display:block}
+#err{color:#d33;font-size:14px;min-height:20px}
+</style>
+</head>
+<body>
+
+<section id="auth" class="view hide">
+  <h1>Вход в чат</h1>
+  <p>Выберите, как войти.</p>
+  <button id="bG">Войти через Google</button>
+  <button id="bM" class="alt">Войти через GitHub</button>
+  <div id="phoneBox" style="display:grid;gap:8px">
+    <input id="ph" type="tel" placeholder="+7 900 000 00 00" autocomplete="tel">
+    <button id="bP" class="alt">Получить код по SMS</button>
+    <div id="codeBox" class="hide" style="display:grid;gap:8px">
+      <input id="code" inputmode="numeric" placeholder="Код из SMS">
+      <button id="bC">Подтвердить код</button>
+    </div>
+  </div>
+  <div id="rc"></div>
+  <p style="font-size:13px;margin:0">Уведомления о сообщениях и звонках приходят, пока приложение открыто или свёрнуто. Если закрыть его полностью, уведомлений не будет.</p>
+  <div id="err"></div>
+</section>
+
+<section id="list" class="view hide">
+  <header><h1>Чаты</h1><button class="ghost" id="bFind">Найти людей</button><div class="av" id="meAv" style="cursor:pointer"></div></header>
+  <div class="bar"><input id="joinId" placeholder="ID звонка"><button id="bJoin">Войти</button></div>
+  <div class="bar" style="padding-top:0"><button class="alt" id="bNewV" style="flex:1">Видеокомната</button><button class="alt" id="bNewA" style="flex:1">Голосовая</button></div>
+  <div class="list" id="chats"></div>
+</section>
+
+<section id="search" class="view hide">
+  <header><button class="ghost" id="sBack">Назад</button><h1>Поиск людей</h1><button class="ghost" id="bGroup">Группа</button></header>
+  <div class="bar"><input id="q" placeholder="Введите имя, чтобы сузить список"></div>
+  <div class="list" id="found"></div>
+  <div class="bar hide" id="mk"><button id="bMk" style="flex:1">Создать группу</button></div>
+</section>
+
+<section id="prof" class="view hide">
+  <header><button class="ghost" id="pBack">Назад</button><h1>Профиль</h1></header>
+  <div style="padding:24px;display:grid;gap:12px;justify-items:center">
+    <div class="av" id="pAv" style="width:96px;height:96px;font-size:36px;cursor:pointer"></div>
+    <button class="ghost" id="pPick">Сменить фото</button>
+    <input id="pName" placeholder="Ваше имя" style="text-align:center">
+    <div id="pSub" style="color:var(--mute);word-break:break-all;text-align:center"></div>
+    <button id="pSave" style="width:100%">Сохранить</button>
+    <button class="alt" id="pPush" style="width:100%">Включить уведомления</button>
+    <button class="alt" id="bOut" style="width:100%">Выйти</button>
+  </div>
+</section>
+
+<div id="tip" class="hide" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--card);color:var(--ink);border-radius:16px;padding:22px;max-width:360px;display:grid;gap:12px">
+    <b style="font-size:20px">Про уведомления</b>
+    <div>Сообщения и звонки приходят уведомлением, пока приложение <b>открыто или свёрнуто</b>.</div>
+    <div><b>Если закрыть приложение полностью (смахнуть), уведомлений не будет.</b> Просто сворачивайте его, а не закрывайте.</div>
+    <div style="color:var(--mute);font-size:14px">Совет для Android: Настройки → Приложения → Батарея → «Без ограничений».</div>
+    <button id="tipOn">Включить уведомления</button>
+    <button class="alt" id="tipOk">Понятно</button>
+  </div>
+</div>
+
+<div id="inc" class="hide" style="position:fixed;inset:0;z-index:50;background:#0b1220;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center">
+  <div style="color:#9fb0c3">Входящий звонок</div>
+  <div id="iName" style="font-size:32px;font-weight:700;word-break:break-word"></div>
+  <div id="iKind" style="color:#9fb0c3"></div>
+  <div style="display:flex;gap:16px;margin-top:30px">
+    <button id="iNo" style="background:#d33;min-width:130px;min-height:64px;font-size:18px">Отклонить</button>
+    <button id="iOk" style="background:#1fa855;min-width:130px;min-height:64px;font-size:18px">Принять</button>
+  </div>
+</div>
+
+<section id="call" class="view hide" style="background:#000;color:#fff;position:relative">
+  <video id="rv" autoplay playsinline style="flex:1;min-height:0;width:100%;object-fit:cover;background:#111"></video>
+  <video id="lv" autoplay playsinline muted style="position:absolute;right:12px;top:calc(12px + env(safe-area-inset-top));width:30vw;max-width:140px;border-radius:12px;object-fit:cover;background:#222"></video>
+  <div style="position:absolute;left:12px;top:calc(12px + env(safe-area-inset-top));max-width:55%;font-size:14px">
+    <div id="cst">Ожидание собеседника</div>
+    <div>ID: <b id="cid" style="word-break:break-all"></b></div>
+    <button class="alt" id="cCopy" style="padding:6px 10px;margin-top:4px">Копировать ID</button>
+  </div>
+  <div style="display:flex;gap:10px;justify-content:center;padding:14px 12px calc(14px + env(safe-area-inset-bottom));background:#000">
+    <button class="alt" id="cMic" style="min-width:76px;min-height:56px">Микрофон</button>
+    <button class="alt" id="cCam" style="min-width:76px;min-height:56px">Камера</button>
+    <button class="alt" id="cFlip" style="min-width:76px;min-height:56px">Повернуть</button>
+    <button id="cEnd" style="min-width:76px;min-height:56px;background:#d33">Конец</button>
+  </div>
+</section>
+
+<section id="chat" class="view hide">
+  <header><button class="ghost" id="cBack">Назад</button><h1 id="cTitle"></h1><button class="ghost" id="cA">Звонок</button><button class="ghost" id="cV">Видео</button></header>
+  <div id="msgs"></div>
+  <form id="f"><button type="button" class="alt" id="bAtt">+</button><button type="button" class="alt" id="bRec">Голос</button><button type="button" class="alt hide" id="bRecX">Отмена</button><input id="t" placeholder="Сообщение" autocomplete="off"><button>Отправить</button></form>
+</section>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<input type="file" id="fAv" accept="image/*" hidden>
+<input type="file" id="fMedia" accept="image/*,video/*" hidden>
+<script>
+// 1) Вставьте сюда настройки веб-приложения из Firebase (Project settings → Your apps)
+const firebaseConfig = {
+  apiKey: "AIzaSyB8abx-xLG-SUevMlLXVq8ITjHZLkfmacY",
+  authDomain: "masenger-656fe.firebaseapp.com",
+  projectId: "masenger-656fe",
+  storageBucket: "masenger-656fe.firebasestorage.app",
+  messagingSenderId: "312081552783",
+  appId: "1:312081552783:web:6cfda43e4e631d0bdd67fa",
+  measurementId: "G-ZFD5PQB3QB"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth(), db = firebase.firestore();
+auth.useDeviceLanguage();
+const $ = s => document.querySelector(s);
+const ts = () => firebase.firestore.FieldValue.serverTimestamp();
+let me = null, chats = [], cur = null, offList = null, offMsgs = null, group = false, picked = {}, conf = null, timer = null;
+
+const show = v => ['auth','list','search','chat','prof','call'].forEach(x => $('#'+x).classList.toggle('hide', x !== v));
+const err = e => { $('#err').textContent = 'Ошибка: ' + (e.message || e); };
+const ini = n => (n || '?').trim()[0].toUpperCase();
+function setAv(el, name, photo) { el.style.backgroundImage = photo ? 'url(' + photo + ')' : ''; el.textContent = photo ? '' : ini(name); }
+function row(name, sub, isBot, on, photo) {
+  const r = document.createElement('div'); r.className = 'row' + (on ? ' on' : '');
+  r.innerHTML = '<div class="av"></div><div><b></b><small></small></div>';
+  setAv(r.querySelector('.av'), name, photo);
+  r.querySelector('b').textContent = name;
+  if (isBot) { const s = document.createElement('span'); s.className = 'bot'; s.textContent = 'бот'; r.querySelector('b').append(s); }
+  r.querySelector('small').textContent = sub || '';
+  return r;
+}
+
+// ---------- Вход ----------
+$('#bG').onclick = () => signIn(new firebase.auth.GoogleAuthProvider());
+$('#bM').onclick = () => signIn(new firebase.auth.GithubAuthProvider());
+let pending = null;
+async function signIn(p) {
+  try {
+    const r = await auth.signInWithPopup(p);
+    if (pending && r.user) { await r.user.linkWithCredential(pending).catch(() => {}); pending = null; }
+  } catch (e) {
+    if (e.code === 'auth/account-exists-with-different-credential') {
+      pending = e.credential;
+      $('#err').textContent = 'Эта почта уже зарегистрирована другим способом. Войдите через Google, и GitHub привяжется к тому же аккаунту.';
+    } else if (e.code === 'auth/popup-blocked') auth.signInWithRedirect(p); else err(e);
+  }
+}
+$('#bP').onclick = async () => {
+  try {
+    window.recaptchaV = window.recaptchaV || new firebase.auth.RecaptchaVerifier('rc', { size: 'invisible' });
+    conf = await auth.signInWithPhoneNumber($('#ph').value.trim(), window.recaptchaV);
+    $('#codeBox').classList.remove('hide'); $('#err').textContent = '';
+  } catch (e) { err(e); }
+};
+$('#bC').onclick = async () => { try { await conf.confirm($('#code').value.trim()); } catch (e) { err(e); } };
+$('#bOut').onclick = () => auth.signOut();
+const shrink = (f, max, q) => new Promise((ok, no) => {
+  const i = new Image();
+  i.onload = () => { const k = Math.min(1, max / Math.max(i.width, i.height)), c = document.createElement('canvas'); c.width = i.width * k; c.height = i.height * k; c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', q)); };
+  i.onerror = no; i.src = URL.createObjectURL(f);
+});
+function renderMe() {
+  setAv($('#meAv'), me.name, me.photo); setAv($('#pAv'), me.name, me.photo);
+  $('#pName').value = me.name === 'Без имени' ? '' : me.name; $('#pSub').textContent = me.sub;
+}
+$('#meAv').onclick = () => { renderMe(); show('prof'); };
+$('#pBack').onclick = () => show('list');
+$('#pPick').onclick = $('#pAv').onclick = () => $('#fAv').click();
+$('#fAv').onchange = async e => { const f = e.target.files[0]; if (f) { me.photo = await shrink(f, 160, .8); setAv($('#pAv'), me.name, me.photo); } };
+$('#pSave').onclick = async () => {
+  const n = $('#pName').value.trim(); if (!n) return alert('Введите имя');
+  try { await db.collection('users').doc(me.uid).update({ name: n, nameLower: n.toLowerCase(), photo: me.photo || '' }); }
+  catch (e) { return alert(e.message); }
+  me.name = n; renderMe(); show('list');
+};
+$('#bAtt').onclick = () => $('#fMedia').click();
+$('#fMedia').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const m = { from: me.uid, name: me.name, text: '', createdAt: ts() };
+    if (f.type.startsWith('image/')) m.img = await shrink(f, 900, .7);
+    else if (f.type.startsWith('video/')) {
+      if (f.size > 50e6) return alert('Видео больше 50 МБ');
+      const r = firebase.storage().ref('chats/' + cur.id + '/' + Date.now() + '_' + f.name);
+      await r.put(f); m.video = await r.getDownloadURL();
+    } else return alert('Можно отправлять только фото и видео');
+    const ref = db.collection('chats').doc(cur.id);
+    await ref.collection('messages').add(m);
+    await ref.update({ last: m.img ? 'Фото' : 'Видео', updatedAt: ts(), lastFrom: me.uid });
+  } catch (x) { alert('Не удалось отправить: ' + x.message); }
+};
+
+auth.onAuthStateChanged(async u => {
+  if (offList) offList(); if (offMsgs) offMsgs(); if (offIn) offIn(); hideInc();
+  if (!u) { me = null; show('auth'); return; }
+  const ref = db.collection('users').doc(u.uid);
+  const snap = await ref.get().catch(() => null);
+  const d = snap && snap.exists ? snap.data() : {};
+  const name = d.name || u.displayName || u.phoneNumber || 'Без имени';
+  const photo = d.photo || u.photoURL || '';
+  if (name !== d.name || (photo && !d.photo)) await ref.set({ uid: u.uid, name, nameLower: name.toLowerCase(), photo, isBot: false }, { merge: true }).catch(err);
+  me = { uid: u.uid, name, photo, sub: u.phoneNumber || u.email || ((u.providerData.find(p => p.email) || {}).email) || 'Вход через GitHub' };
+  renderMe();
+  show(name === 'Без имени' ? 'prof' : 'list'); watchIncoming(); showTip();
+  offList = db.collection('chats').where('members', 'array-contains', me.uid).onSnapshot(s => {
+    s.docChanges().forEach(c => {
+      const d = c.doc.data(), t = d.updatedAt && d.updatedAt.seconds;
+      if (c.type === 'modified' && t && t !== seen[c.doc.id] && d.lastFrom && d.lastFrom !== me.uid && (document.hidden || !cur || cur.id !== c.doc.id))
+        notify((d.names && d.names[d.lastFrom]) || 'Новое сообщение', d.last || '', c.doc.id);
+      if (t) seen[c.doc.id] = t;
+    });
+    chats = s.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => ((b.updatedAt && b.updatedAt.seconds) || 0) - ((a.updatedAt && a.updatedAt.seconds) || 0));
+    renderChats();
+  }, err);
+});
+
+// ---------- Список чатов ----------
+const title = c => c.isGroup ? c.title : ((Object.entries(c.names || {}).find(([k]) => k !== me.uid) || [0, 'Чат'])[1]);
+function renderChats() {
+  const box = $('#chats'); box.innerHTML = '';
+  if (!chats.length) { box.innerHTML = '<div class="empty">Чатов пока нет. Нажмите «Найти людей» и напишите первому.</div>'; return; }
+  chats.forEach(c => { const r = row(title(c), c.last, c.isBot); r.onclick = () => openChat(c); box.append(r); });
+}
+
+// ---------- Поиск и создание чатов ----------
+$('#bFind').onclick = () => { group = false; picked = {}; syncSearch(); show('search'); runSearch(); };
+$('#sBack').onclick = () => show('list');
+$('#bGroup').onclick = () => { group = !group; picked = {}; syncSearch(); runSearch(); };
+function syncSearch() { $('#bGroup').textContent = group ? 'Отмена' : 'Группа'; $('#mk').classList.toggle('hide', !group); $('#found').innerHTML = ''; }
+$('#q').oninput = () => { clearTimeout(timer); timer = setTimeout(runSearch, 300); };
+async function runSearch() {
+  const q = $('#q').value.trim().toLowerCase(), box = $('#found');
+  try {
+    const s = q
+      ? await db.collection('users').where('nameLower', '>=', q).where('nameLower', '<=', q + '\uf8ff').limit(50).get()
+      : await db.collection('users').orderBy('nameLower').limit(50).get();
+    box.innerHTML = '';
+    const users = s.docs.map(d => d.data()).filter(u => u.uid !== me.uid);
+    if (!users.length) box.innerHTML = '<div class="empty">Никого не нашли. Проверьте имя.</div>';
+    users.forEach(u => {
+      const r = row(u.name, u.isBot ? 'Бот' : '', u.isBot, picked[u.uid], u.photo);
+      r.onclick = () => {
+        if (!group) return startDirect(u);
+        picked[u.uid] ? delete picked[u.uid] : picked[u.uid] = u; r.classList.toggle('on');
+      };
+      box.append(r);
+    });
+  } catch (e) { box.innerHTML = '<div class="empty"></div>'; box.firstChild.textContent = 'Ошибка поиска: ' + e.message; }
+}
+async function startDirect(u) {
+  const id = [me.uid, u.uid].sort().join('_');
+  const c = { members: [me.uid, u.uid], names: { [me.uid]: me.name, [u.uid]: u.name }, isGroup: false, isBot: !!u.isBot };
+  await db.collection('chats').doc(id).set(c, { merge: true }).catch(err);
+  openChat({ id, ...c });
+}
+$('#bMk').onclick = async () => {
+  const list = Object.values(picked); if (!list.length) return alert('Выберите хотя бы одного человека');
+  const t = prompt('Название группы'); if (!t) return;
+  const names = { [me.uid]: me.name }; list.forEach(u => names[u.uid] = u.name);
+  const c = { members: Object.keys(names), names, isGroup: true, title: t, last: '', updatedAt: ts() };
+  const d = await db.collection('chats').add(c).catch(err);
+  if (d) openChat({ id: d.id, ...c });
+};
+
+// ---------- Переписка ----------
+function openChat(c) {
+  cur = c; $('#cTitle').textContent = title(c); show('chat');
+  if (offMsgs) offMsgs();
+  offMsgs = db.collection('chats').doc(c.id).collection('messages').orderBy('createdAt').limit(200).onSnapshot(s => {
+    const box = $('#msgs'); box.innerHTML = '';
+    s.docs.forEach(d => {
+      const m = d.data(), el = document.createElement('div');
+      el.className = 'm' + (m.from === me.uid ? ' me' : '');
+      if (c.isGroup && m.from !== me.uid) { const n = document.createElement('small'); n.textContent = m.name; el.append(n); }
+      if (m.audio) { const a = document.createElement('audio'); a.src = m.audio; a.controls = true; a.style.maxWidth = '100%'; el.append(a); }
+      if (m.img) { const i = document.createElement('img'); i.src = m.img; el.append(i); }
+      if (m.video) { const v = document.createElement('video'); v.src = m.video; v.controls = true; v.playsInline = true; el.append(v); }
+      if (m.call) {
+        if (m.from === me.uid) el.append(document.createTextNode(m.video ? 'Вы начали видеозвонок' : 'Вы начали звонок'));
+        else { const b = document.createElement('button'); b.textContent = (m.video ? 'Видеозвонок' : 'Звонок') + ': присоединиться'; b.onclick = () => joinCall(m.call); el.append(b); }
+      }
+      if (m.text) el.append(document.createTextNode(m.text));
+      box.append(el);
+    });
+    box.scrollTop = box.scrollHeight;
+  }, err);
+}
+$('#cBack').onclick = () => { if (offMsgs) offMsgs(); cur = null; show('list'); };
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  const text = $('#t').value.trim(); if (!text) return; $('#t').value = '';
+  const ref = db.collection('chats').doc(cur.id);
+  await ref.collection('messages').add({ from: me.uid, name: me.name, text, createdAt: ts() }).catch(err);
+  await ref.update({ last: text, updatedAt: ts(), lastFrom: me.uid }).catch(err);
+};
+
+// ---------- Звонки (WebRTC, сигналы через Firestore) ----------
+if (location.protocol === 'file:') $('#err').textContent = 'Файл открыт локально: вход и звонки здесь не работают. Откройте эту же страницу по ссылке GitHub Pages (https).';
+const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
+let pc = null, local = null, callRef = null, offs = [], facing = 'user';
+const hint = e => (location.protocol === 'file:' || !window.isSecureContext)
+  ? 'Страница открыта как локальный файл, и браузер блокирует камеру и микрофон. Откройте эту же страницу по ссылке GitHub Pages (https).'
+  : 'Нет доступа к камере или микрофону. Разрешите его в настройках браузера. (' + e.message + ')';
+async function media(video) {
+  local = await navigator.mediaDevices.getUserMedia({ audio: true, video: video ? { facingMode: facing } : false });
+  $('#lv').srcObject = local; $('#lv').style.display = video ? '' : 'none';
+  $('#cCam').style.display = $('#cFlip').style.display = video ? '' : 'none';
+  $('#cMic').textContent = 'Микрофон'; $('#cCam').textContent = 'Камера'; $('#cst').textContent = 'Ожидание собеседника';
+}
+function setupPc() {
+  pc = new RTCPeerConnection(ICE);
+  local.getTracks().forEach(t => pc.addTrack(t, local));
+  pc.ontrack = e => { $('#rv').srcObject = e.streams[0]; };
+  pc.onconnectionstatechange = () => {
+    const t = { connecting: 'Соединение...', connected: 'Соединено', disconnected: 'Связь потеряна', failed: 'Не удалось соединиться (нужен TURN-сервер)' }[pc.connectionState];
+    if (t) $('#cst').textContent = t;
+  };
+}
+const addCands = q => offs.push(q.onSnapshot(s => s.docChanges().forEach(c => c.type === 'added' && pc.addIceCandidate(c.doc.data()).catch(() => {}))));
+async function startCall(video, chatId) {
+  try {
+    show('call'); await media(video); setupPc();
+    callRef = db.collection('calls').doc();
+    const cc = callRef.collection('callerCandidates');
+    pc.onicecandidate = e => e.candidate && cc.add(e.candidate.toJSON());
+    const o = await pc.createOffer(); await pc.setLocalDescription(o);
+    await callRef.set({ from: me.uid, fromName: me.name, to: chatId && cur ? cur.members.filter(x => x !== me.uid) : [], at: Date.now(), video, offer: { type: o.type, sdp: o.sdp }, createdAt: ts() });
+    $('#cid').textContent = callRef.id;
+    if (chatId) {
+      const ch = db.collection('chats').doc(chatId);
+      await ch.collection('messages').add({ from: me.uid, name: me.name, text: '', call: callRef.id, video, createdAt: ts() });
+      await ch.update({ last: video ? 'Видеозвонок' : 'Звонок', updatedAt: ts(), lastFrom: me.uid });
+    }
+    let got = false;
+    offs.push(callRef.onSnapshot(async s => {
+      const d = s.data(); if (!d) return;
+      if (d.ended) return endCall(false);
+      if (d.answer && !got) { got = true; await pc.setRemoteDescription(d.answer); addCands(callRef.collection('calleeCandidates')); }
+    }));
+  } catch (e) { alert(hint(e)); endCall(false); }
+}
+async function joinCall(id) {
+  try {
+    callRef = db.collection('calls').doc(id.trim());
+    const s = await callRef.get();
+    if (!s.exists) { callRef = null; return alert('Звонок с таким ID не найден'); }
+    const d = s.data(); if (d.ended) { callRef = null; return alert('Этот звонок уже завершён'); }
+    show('call'); $('#cid').textContent = callRef.id; await media(d.video); setupPc();
+    const cc = callRef.collection('calleeCandidates');
+    pc.onicecandidate = e => e.candidate && cc.add(e.candidate.toJSON());
+    await pc.setRemoteDescription(d.offer);
+    const a = await pc.createAnswer(); await pc.setLocalDescription(a);
+    await callRef.update({ answer: { type: a.type, sdp: a.sdp } });
+    addCands(callRef.collection('callerCandidates'));
+    offs.push(callRef.onSnapshot(x => x.data() && x.data().ended && endCall(false)));
+  } catch (e) { alert(hint(e)); endCall(false); }
+}
+function endCall(notify = true) {
+  offs.forEach(f => f()); offs = [];
+  if (notify && callRef) callRef.update({ ended: true }).catch(() => {});
+  if (pc) pc.close(); pc = null;
+  if (local) local.getTracks().forEach(t => t.stop()); local = null; callRef = null;
+  $('#rv').srcObject = null; show(cur ? 'chat' : 'list');
+}
+$('#cA').onclick = () => startCall(false, cur.id);
+$('#cV').onclick = () => startCall(true, cur.id);
+$('#bNewV').onclick = () => startCall(true);
+$('#bNewA').onclick = () => startCall(false);
+$('#bJoin').onclick = () => { const v = $('#joinId').value.trim(); if (v) joinCall(v); };
+$('#cEnd').onclick = () => endCall(true);
+$('#cCopy').onclick = async () => { try { await navigator.clipboard.writeText($('#cid').textContent); $('#cCopy').textContent = 'Скопировано'; } catch (e) { prompt('Скопируйте ID', $('#cid').textContent); } setTimeout(() => $('#cCopy').textContent = 'Копировать ID', 1500); };
+$('#cMic').onclick = e => { const t = local && local.getAudioTracks()[0]; if (!t) return; t.enabled = !t.enabled; e.target.textContent = t.enabled ? 'Микрофон' : 'Микр. выкл'; };
+$('#cCam').onclick = e => { const t = local && local.getVideoTracks()[0]; if (!t) return; t.enabled = !t.enabled; e.target.textContent = t.enabled ? 'Камера' : 'Камера выкл'; };
+$('#cFlip').onclick = async () => {
+  const old = local && local.getVideoTracks()[0]; if (!old) return;
+  facing = facing === 'user' ? 'environment' : 'user'; old.stop();
+  try {
+    const nt = (await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } })).getVideoTracks()[0];
+    local.removeTrack(old); local.addTrack(nt);
+    await pc.getSenders().find(x => x.track && x.track.kind === 'video').replaceTrack(nt);
+    $('#lv').srcObject = local;
+  } catch (e) { alert(hint(e)); }
+};
+
+// ---------- Входящие звонки ----------
+let inc = null, ringT = null, ac = null, offIn = null;
+function ring(on) {
+  clearInterval(ringT); if (!on) return;
+  const beep = () => {
+    try { ac = ac || new AudioContext(); const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 440; g.gain.value = .15; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + .4); } catch (e) {}
+    if (navigator.vibrate) navigator.vibrate(300);
+  };
+  beep(); ringT = setInterval(beep, 1500);
+}
+function hideInc() { inc = null; $('#inc').classList.add('hide'); ring(false); }
+function watchIncoming() {
+  offIn = db.collection('calls').where('to', 'array-contains', me.uid).onSnapshot(s => s.docChanges().forEach(c => {
+    const d = c.doc.data();
+    if (inc && inc.id === c.doc.id && (d.ended || d.answer)) return hideInc();
+    if (c.type === 'removed' || d.ended || d.answer || d.from === me.uid || !d.at || Date.now() - d.at > 45000 || pc || inc) return;
+    inc = { id: c.doc.id };
+    $('#iName').textContent = d.fromName || 'Кто-то';
+    $('#iKind').textContent = d.video ? 'Видеозвонок' : 'Голосовой звонок';
+    if (document.hidden) notify('Входящий звонок', (d.fromName || 'Кто-то') + ': ' + (d.video ? 'видеозвонок' : 'голосовой звонок'), 'call', true);
+    $('#inc').classList.remove('hide'); ring(true);
+  }));
+}
+$('#iOk').onclick = () => { const id = inc.id; hideInc(); joinCall(id); };
+$('#iNo').onclick = () => { const id = inc.id; hideInc(); db.collection('calls').doc(id).update({ ended: true }).catch(() => {}); };
+
+// ---------- Голосовые сообщения ----------
+let rec = null, recT = null, chunks = [], recSec = 0, recCancel = false;
+$('#bRec').onclick = async () => {
+  if (rec) return rec.stop();
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mt = ['audio/webm;codecs=opus', 'audio/mp4'].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+    rec = new MediaRecorder(st, mt ? { mimeType: mt, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 });
+    chunks = []; recSec = 0; recCancel = false;
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.onstop = async () => {
+      clearInterval(recT); st.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' }); rec = null;
+      $('#bRec').textContent = 'Голос'; $('#bRec').style.background = ''; $('#bRec').style.color = ''; $('#bRecX').classList.add('hide');
+      if (recCancel || recSec < 1) return;
+      const url = await new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+      if (url.length > 900000) return alert('Сообщение слишком длинное');
+      try {
+        const ref = db.collection('chats').doc(cur.id);
+        await ref.collection('messages').add({ from: me.uid, name: me.name, text: '', audio: url, createdAt: ts() });
+        await ref.update({ last: 'Голосовое сообщение', updatedAt: ts(), lastFrom: me.uid });
+      } catch (x) { alert('Не удалось отправить: ' + x.message); }
+    };
+    rec.start();
+    $('#bRec').textContent = 'Отправить 0с'; $('#bRec').style.background = '#d33'; $('#bRec').style.color = '#fff'; $('#bRecX').classList.remove('hide');
+    recT = setInterval(() => { recSec++; $('#bRec').textContent = 'Отправить ' + recSec + 'с'; if (recSec >= 120) rec.stop(); }, 1000);
+  } catch (e) { alert(hint(e)); }
+};
+$('#bRecX').onclick = () => { recCancel = true; if (rec) rec.stop(); };
+
+// ---------- PWA и push-уведомления ----------
+const VAPID = 'ВСТАВЬТЕ_VAPID_КЛЮЧ'; // Firebase → Project settings → Cloud Messaging → Web Push certificates → Generate key pair
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('firebase-messaging-sw.js').catch(() => {});
+const seen = {};
+function notify(title, body, tag, sticky) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const o = { body, tag, icon: 'icon-192.png', renotify: true, vibrate: [200, 100, 200], requireInteraction: !!sticky };
+  const old = () => { try { new Notification(title, o); } catch (e) {} };
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.ready.then(r => r.showNotification(title, o)).catch(old); else old();
+}
+$('#pPush').onclick = async () => {
+  try {
+    if (!('Notification' in window)) return alert('Браузер не поддерживает уведомления. На iPhone сначала добавьте сайт «На экран Домой» и откройте его оттуда.');
+    if (await Notification.requestPermission() !== 'granted') return alert('Уведомления запрещены. Разрешите их в настройках браузера или приложения.');
+    notify('Уведомления включены', 'Теперь вы увидите сообщения и звонки', 'test');
+    if (!VAPID.startsWith('ВСТАВЬТЕ') && firebase.messaging.isSupported()) {
+      const reg = await navigator.serviceWorker.ready;
+      const token = await firebase.messaging().getToken({ vapidKey: VAPID, serviceWorkerRegistration: reg });
+      await db.collection('tokens').doc(me.uid).set({ list: firebase.firestore.FieldValue.arrayUnion(token) }, { merge: true });
+    }
+  } catch (e) { alert('Ошибка: ' + e.message); }
+};
+
+// ---------- Подсказка про уведомления при первом входе ----------
+function showTip() {
+  try { if (localStorage.getItem('tip1')) return; } catch (e) {}
+  $('#tip').classList.remove('hide');
+}
+function closeTip() { $('#tip').classList.add('hide'); try { localStorage.setItem('tip1', '1'); } catch (e) {} }
+$('#tipOk').onclick = closeTip;
+$('#tipOn').onclick = () => { closeTip(); $('#pPush').onclick(); };
+</script>
+</body>
+</html>
